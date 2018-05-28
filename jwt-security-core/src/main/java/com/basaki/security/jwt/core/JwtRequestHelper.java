@@ -1,17 +1,20 @@
 package com.basaki.security.jwt.core;
 
+import com.basaki.security.jwt.core.algorithm.AlgorithmType;
 import com.basaki.security.jwt.core.exception.InvalidTokenException;
+import com.basaki.security.jwt.core.util.CryptoUtil;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.security.MessageDigest;
+import java.util.Base64;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jose4j.jws.JsonWebSignature;
 import org.jose4j.jwt.JwtClaims;
 import org.jose4j.jwx.HeaderParameterNames;
 import org.jose4j.lang.JoseException;
-import org.springframework.util.Assert;
 
 import static com.basaki.security.jwt.core.util.EncoderDecoder.encode;
 
@@ -34,15 +37,15 @@ public class JwtRequestHelper implements JwtMessageHelper<Request> {
 
     @Override
     public String create(Request request, String issuerIdentifier,
-            String issuer, String subject, String audience, String password,
-            int expiration) {
-        Assert.notNull(request, "Request can't be null!");
-        Assert.notNull(issuer, "Issuer can't be null!");
-        Assert.notNull(subject, "Subject can't be null!");
-        Assert.notNull(audience, "Audience can't be null!");
-        Assert.notNull(password, "Password can't be null!");
-        Assert.state((expiration > 0),
-                "Expiration time should be greater than zer0!");
+            String issuer, String audience, String user, String password,
+            int expiration, AlgorithmType signingAlgo) {
+        assert request != null : "Request can't be null!";
+        assert issuer != null : "Issuer can't be null!";
+        assert user != null : "Subject can't be null!";
+        assert audience != null : "Audience can't be null!";
+        assert password != null : "Password can't be null!";
+        assert expiration > 0 : "Expiration time should be greater than zero!";
+        assert signingAlgo != null : "Signing algorithm cannot be null!";
 
         JwtClaims claims = new JwtClaims();
         if (issuerIdentifier != null) {
@@ -51,7 +54,7 @@ public class JwtRequestHelper implements JwtMessageHelper<Request> {
             claims.setIssuer(issuer);
         }
 
-        claims.setSubject(subject);
+        claims.setSubject(user);
         claims.setAudience(audience);
         claims.setExpirationTimeMinutesInTheFuture(expiration);
         claims.setNotBeforeMinutesInThePast(2);
@@ -61,7 +64,7 @@ public class JwtRequestHelper implements JwtMessageHelper<Request> {
 
         JsonWebSignature jws = new JsonWebSignature();
         jws.setPayload(claims.toJson());
-        //jws.setAlgorithmHeaderValue(algoType.getIdentifier());
+        jws.setAlgorithmHeaderValue(signingAlgo.name());
         //jws.setKey(key);
 
         jws.setHeader(HeaderParameterNames.TYPE, "JWT");
@@ -91,10 +94,11 @@ public class JwtRequestHelper implements JwtMessageHelper<Request> {
         RequestPayload payload = new RequestPayload();
         if (request.getBody() != null && request.getBody().length > 0) {
             byte[] content = request.getBody();
-            //            byte[] hash = getShaHash(AlgorithmType.SHA256, content);
-            //            String encodedHash = Base64.getEncoder().encodeToString(hash);
-            //            payload.setHash(encodedHash);
-            //            payload.setAlgorithm(AlgorithmType.SHA256.name());
+            MessageDigest hasher = CryptoUtil.getSha256Hash();
+            hasher.update(content);
+            byte[] hash = hasher.digest();
+            String encodedHash = Base64.getUrlEncoder().encodeToString(hash);
+            payload.setBody(encodedHash);
         }
 
         payload.setMethod(request.getMethod());
@@ -122,9 +126,6 @@ public class JwtRequestHelper implements JwtMessageHelper<Request> {
 
         @JsonProperty("qry")
         private String query;
-
-        @JsonProperty("alg")
-        private String algorithm;
 
         @JsonProperty("bdy")
         private String body;
